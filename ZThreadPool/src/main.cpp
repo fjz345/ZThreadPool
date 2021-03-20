@@ -5,7 +5,7 @@
 #include <iostream>
 
 #define NUMTHREADS 8
-#define NUMTASKS 100000
+#define NUMTASKS 10000000
 
 void PrintTestResults(TestTask* tests)
 {
@@ -28,6 +28,7 @@ int main()
         tests[i]._b = i;
     }
 
+    std::cout << "Starting test with: " << NUMTASKS << " Tasks" << std::endl;
     for (int i = 0 ; i < NUMTASKS; i++)
     {
         pool->AddTask(&tests[i]);

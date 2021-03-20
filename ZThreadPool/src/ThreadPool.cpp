@@ -26,7 +26,16 @@ ThreadPool::~ThreadPool()
 
 void ThreadPool::WaitForAllThreads()
 {
-	while (s_TaskQueue.size() > 0);
+	while (true)
+	{
+		volatile size_t queueSize = s_TaskQueue.size();
+		if (queueSize == 0)
+			break;
+	}
+
+	while (s_TaskQueue.size() != 0);
+
+	std::cout << "s_TaskQueue.size() = " << s_TaskQueue.size() << std::endl;
 
 	{
 		std::unique_lock<std::mutex> lock(s_ActiveThreadsMutex);
@@ -39,8 +48,9 @@ void ThreadPool::WaitForAllThreads()
 void ThreadPool::AddTask(Task* task)
 {
 	{
-		std::unique_lock<std::mutex> lock(s_TaskQueueMutex);
+		s_TaskQueueMutex.lock();
 		s_TaskQueue.push(task);
+		s_TaskQueueMutex.unlock();
 	}
 	s_Condition.notify_one();
 }
@@ -90,8 +100,9 @@ unsigned int __stdcall Thread::threadMain(void* params)
 		}
 
 		{
-			std::lock_guard<std::mutex> lock(s_ActiveThreadsMutex);
+			s_ActiveThreadsMutex.lock();
 			s_ActiveThreads++;
+			s_ActiveThreadsMutex.unlock();
 		}
 
 		// Work
@@ -99,12 +110,12 @@ unsigned int __stdcall Thread::threadMain(void* params)
 
 		// Finished the task
 		threadInstance->_CurrentTask = nullptr;
-
 		{
-			std::lock_guard<std::mutex> lock(s_ActiveThreadsMutex);
+			s_ActiveThreadsMutex.lock();
 			s_ActiveThreads--;
+			s_ActiveThreadsMutex.unlock();
 		}
-		s_ActiveThreadsCondition.notify_one();
+		s_ActiveThreadsCondition.notify_all();
 	}
 
 	return 0;
