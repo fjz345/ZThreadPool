@@ -4,16 +4,43 @@
 #include "ThreadPool.h"
 #include <iostream>
 
+#define NUMTHREADS 8
+#define NUMTASKS 100000
+
+void PrintTestResults(TestTask* tests)
+{
+    for (unsigned int i = 0; i < NUMTASKS; i++)
+    {
+        std::cout << tests[i]._result << std::endl;
+    }
+}
+
 int main()
 {
-    ThreadPool pool(1);
+    ThreadPool* pool = new ThreadPool(NUMTHREADS);
 
-    TestTask test;
+    TestTask* tests = new TestTask[NUMTASKS];
 
-    pool.AddTask(&test);
+    // init tests
+    for (unsigned int i = 0; i < NUMTASKS; i++)
+    {
+        tests[i]._a = i;
+        tests[i]._b = i;
+    }
 
-    std::cout << "Hello World!\n";
+    for (int i = 0 ; i < NUMTASKS; i++)
+    {
+        pool->AddTask(&tests[i]);
+    }
+    
+    pool->WaitForAllThreads();
+    std::cout << "ALL THREADS FINISHED!!!!" << std::endl;
 
+    // print values
+    PrintTestResults(tests);
+
+    delete pool;
+    
     std::cin.get();
 }
 

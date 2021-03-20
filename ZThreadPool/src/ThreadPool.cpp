@@ -4,12 +4,16 @@
 #include <process.h>
 #include <synchapi.h>
 
+#include <iostream>
+
 ThreadPool::ThreadPool(unsigned int numThreads)
 {
 	for (unsigned int i = 0; i < numThreads; i++)
 	{
 		_Threads.push_back(new Thread(i));
 	}
+
+	s_ActiveThreads = 0;
 }
 
 ThreadPool::~ThreadPool()
@@ -20,22 +24,25 @@ ThreadPool::~ThreadPool()
 	}
 }
 
-void ThreadPool::AddTask(Task* task)
+void ThreadPool::WaitForAllThreads()
 {
-	Thread* thread = getAvailableThread();
-	thread->ExecuteTask(task);
-}
+	while (s_TaskQueue.size() > 0);
 
-Thread* ThreadPool::getAvailableThread()
-{
-	for (Thread* t : _Threads)
 	{
-		if (t->IsFinished())
-			return t;
+		std::unique_lock<std::mutex> lock(s_ActiveThreadsMutex);
+		s_ActiveThreadsCondition.wait(lock, [] {return s_ActiveThreads == 0; });
 	}
 
-	// If none free, choose first
-	return _Threads[0];
+	return;
+}
+
+void ThreadPool::AddTask(Task* task)
+{
+	{
+		std::unique_lock<std::mutex> lock(s_TaskQueueMutex);
+		s_TaskQueue.push(task);
+	}
+	s_Condition.notify_one();
 }
 
 Thread::Thread(unsigned int uniqueId)
@@ -43,8 +50,6 @@ Thread::Thread(unsigned int uniqueId)
 {
 	_IsRunning = true;
 	_CurrentTask = nullptr;
-
-	_ThreadHandle = _beginthreadex(0, 0, threadMain, static_cast<void*>(this), 0, 0);
 
 	// Create an event for the thread
 	_EventHandle = CreateEvent(
@@ -54,58 +59,52 @@ Thread::Thread(unsigned int uniqueId)
 		NULL	// object m_Name
 	);
 
-	WakeUp();
+	_ThreadHandle = _beginthreadex(0, 0, threadMain, static_cast<void*>(this), 0, 0);
 
-
-
+	std::cout << "Created Thread: " << _ThreadHandle << std::endl;
 }
 
 Thread::~Thread()
 {
-	_IsRunning = false;
-	WakeUp();
-}
+	std::cout << "Killing Thread: " << _ThreadHandle << std::endl;
 
-bool Thread::ExecuteTask(Task* t)
-{
-	_Mutex.lock();
-	_CurrentTask = t;
-	_Mutex.unlock();
-	
-	WakeUp();
-
-	return true;
-}
-
-bool Thread::WakeUp()
-{
-	return SetEvent(_EventHandle);
+	bool ret = CloseHandle((HANDLE)_ThreadHandle);
+	if (ret == 0)
+	{
+		DebugBreak();
+	}
 }
 
 unsigned int __stdcall Thread::threadMain(void* params)
 {
 	Thread* threadInstance = static_cast<Thread*>(params);
 
-	while (threadInstance->_IsRunning)
+	while (true)
 	{
-		// Sleep until time to work
-		WaitForSingleObject(
-			threadInstance->_EventHandle, // event handle
-			INFINITE);    // indefinite wait
+		// Get a job
+		{
+			std::unique_lock<std::mutex> lock(s_TaskQueueMutex);
+			s_Condition.wait(lock, [] {return !s_TaskQueue.empty(); });
+			threadInstance->_CurrentTask = s_TaskQueue.front();
+			s_TaskQueue.pop();
+		}
 
-
-		
+		{
+			std::lock_guard<std::mutex> lock(s_ActiveThreadsMutex);
+			s_ActiveThreads++;
+		}
 
 		// Work
-		threadInstance->_Mutex.lock();
 		threadInstance->_CurrentTask->Execute();
-		threadInstance->_Mutex.unlock();
-
 
 		// Finished the task
-		threadInstance->_Mutex.lock();
 		threadInstance->_CurrentTask = nullptr;
-		threadInstance->_Mutex.unlock();
+
+		{
+			std::lock_guard<std::mutex> lock(s_ActiveThreadsMutex);
+			s_ActiveThreads--;
+		}
+		s_ActiveThreadsCondition.notify_one();
 	}
 
 	return 0;
