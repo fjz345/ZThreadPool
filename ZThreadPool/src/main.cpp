@@ -15,10 +15,8 @@ void PrintTestResults(TestTask* tests)
     }
 }
 
-int main()
+void Test(ThreadPool* pool)
 {
-    ThreadPool* pool = new ThreadPool(NUMTHREADS);
-
     TestTask* tests = new TestTask[NUMTASKS];
 
     // init tests
@@ -29,16 +27,23 @@ int main()
     }
 
     std::cout << "Starting test with: " << NUMTASKS << " Tasks" << std::endl;
-    for (int i = 0 ; i < NUMTASKS; i++)
+    for (int i = 0; i < NUMTASKS; i++)
     {
         pool->AddTask(&tests[i]);
     }
-    
+
     pool->WaitForAllThreads();
     std::cout << "ALL THREADS FINISHED!!!!" << std::endl;
 
     // print values
-    PrintTestResults(tests);
+    //PrintTestResults(tests);
+}
+
+int main()
+{
+    ThreadPool* pool = new ThreadPool(NUMTHREADS);
+
+    Test(pool);
 
     delete pool;
     

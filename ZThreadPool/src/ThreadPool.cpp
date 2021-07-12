@@ -35,8 +35,6 @@ void ThreadPool::WaitForAllThreads()
 
 	while (s_TaskQueue.size() != 0);
 
-	std::cout << "s_TaskQueue.size() = " << s_TaskQueue.size() << std::endl;
-
 	{
 		std::unique_lock<std::mutex> lock(s_ActiveThreadsMutex);
 		s_ActiveThreadsCondition.wait(lock, [] {return s_ActiveThreads == 0; });
